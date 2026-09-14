@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>可视化物流仿真平台 · 专业实践演示</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;600;700&display=swap" />
+  <style>
+    :root {
+      --bg: #071018;
+      --panel: #0e1a27;
+      --line: #1e3348;
+      --text: #e6eef6;
+      --muted: #8aa0b5;
+      --cyan: #22d3ee;
+      --blue: #3b82f6;
+      --green: #22c55e;
+      --amber: #f59e0b;
+      --red: #ef4444;
+      --violet: #a78bfa;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+    body { display: flex; flex-direction: column; font-family: "Noto Sans SC", "Microsoft YaHei", "PingFang SC", sans-serif; }
+    header {
+      display: flex; justify-content: space-between; align-items: center; gap: 16px;
+      padding: 12px 18px; border-bottom: 1px solid var(--line); background: #0b1622;
+    }
+    header h1 { margin: 0; font-size: 18px; letter-spacing: .04em; }
+    header p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #123047; color: var(--cyan); font-size: 11px; margin-left: 8px; }
+    .meta { text-align: right; font-size: 12px; color: var(--muted); line-height: 1.6; }
+    .layout { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 360px; min-height: 0; }
+    .stage { position: relative; min-width: 0; min-height: 560px; }
+    canvas { width: 100%; height: 100%; display: block; background:
+      radial-gradient(1200px 700px at 50% 20%, #102133 0%, #071018 70%); }
+    .hud {
+      position: absolute; left: 12px; top: 12px; display: flex; gap: 8px; flex-wrap: wrap;
+    }
+    .hud span, .legend i { display: inline-flex; align-items: center; gap: 6px; }
+    .chip {
+      background: rgba(8, 18, 28, .82); border: 1px solid var(--line); color: var(--muted);
+      padding: 5px 9px; border-radius: 8px; font-size: 12px;
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .side {
+      border-left: 1px solid var(--line); background: var(--panel); overflow: auto; padding: 12px;
+    }
+    .card { border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 12px; background: #0c1824; }
+    .card h2 { margin: 0 0 10px; font-size: 13px; color: var(--cyan); font-weight: 600; }
+    .btns { display: flex; flex-wrap: wrap; gap: 6px; }
+    button, select {
+      background: #132536; color: var(--text); border: 1px solid #2a4660; border-radius: 7px;
+      padding: 6px 10px; font-size: 12px; cursor: pointer;
+    }
+    button:hover { border-color: var(--cyan); }
+    button.primary { background: #164e63; border-color: #22d3ee; }
+    button.danger { background: #3f1d24; border-color: #ef4444; }
+    .kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .kpi { padding: 8px; border-radius: 8px; background: #10202e; }
+    .kpi b { display: block; font-size: 20px; margin-top: 2px; }
+    .kpi span { color: var(--muted); font-size: 11px; }
+    .bars { display: grid; gap: 7px; margin-top: 8px; }
+    .bar { height: 8px; background: #163044; border-radius: 99px; overflow: hidden; }
+    .bar > i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--blue), var(--cyan)); }
+    table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    th, td { padding: 5px 4px; border-bottom: 1px solid #173044; text-align: left; }
+    th { color: var(--muted); font-weight: 500; }
+    .ok { color: var(--green); } .run { color: var(--amber); } .wait { color: var(--violet); } .bad { color: var(--red); }
+    .log { max-height: 140px; overflow: auto; font-size: 11px; color: var(--muted); line-height: 1.55; }
+    .hint { color: var(--muted); font-size: 11px; line-height: 1.5; }
+    .modal {
+      position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; z-index: 9;
+    }
+    .modal .box { width: min(640px, 92vw); background: #0e1a27; border: 1px solid #2b4a63; border-radius: 12px; padding: 22px; }
+    .modal h3 { margin: 0 0 10px; }
+    .modal li { margin: 6px 0; color: #c9d7e4; font-size: 13px; }
+    @media (max-width: 980px) {
+      .layout { grid-template-columns: 1fr; }
+      .side { border-left: 0; border-top: 1px solid var(--line); max-height: 40vh; }
+      .stage { height: 58vh; min-height: 420px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>基于 Unity3D 的可视化物流仿真动画平台 <span class="badge">HTML 演示 MVP</span></h1>
+      <p>四向穿梭车立体库 · A* 路径规划（含换向代价） · 任务调度 · 数据驱动场景</p>
+    </div>
+    <div class="meta">
+      张晖 2024388334 · 信息工程学院 · 计算机技术<br />
+      校内导师 胡海龙 · 企业导师 邱碧波<br />
+      实践单位：浙江中匠智能装备有限公司
+    </div>
+  </header>
+
+  <div class="layout">
+    <div class="stage">
+      <canvas id="cv"></canvas>
+      <div class="hud">
+        <span class="chip">拖拽平移 · 滚轮缩放</span>
+        <span class="chip"><i class="dot" style="background:#64748b"></i>空闲货位</span>
+        <span class="chip"><i class="dot" style="background:#f59e0b"></i>占用</span>
+        <span class="chip"><i class="dot" style="background:#22c55e"></i>穿梭车</span>
+        <span class="chip"><i class="dot" style="background:#38bdf8"></i>规划路径</span>
+        <span class="chip"><i class="dot" style="background:#ef4444"></i>冲突</span>
+      </div>
+    </div>
+    <aside class="side">
+      <div class="card">
+        <h2>控制台</h2>
+        <div class="btns">
+          <button class="primary" id="btnPlay">暂停</button>
+          <button id="btnReset">重置</button>
+          <button id="btnDemo">演示 12 单</button>
+          <button id="btnHelp">说明</button>
+          <select id="speed">
+            <option value="0.5">0.5x</option>
+            <option value="1" selected>1x</option>
+            <option value="2">2x</option>
+            <option value="4">4x</option>
+          </select>
+        </div>
+        <div class="btns" style="margin-top:8px">
+          <button id="btnIn">下发入库</button>
+          <button id="btnOut">下发出库</button>
+          <button id="btnMv">下发移库</button>
+        </div>
+        <div class="btns" style="margin-top:8px">
+          <label class="chip"><input type="checkbox" id="ly0" checked /> 1F</label>
+          <label class="chip"><input type="checkbox" id="ly1" checked /> 2F</label>
+          <label class="chip"><input type="checkbox" id="ly2" checked /> 3F</label>
+          <label class="chip"><input type="checkbox" id="showPath" checked /> 显示路径</label>
+        </div>
+        <p class="hint" style="margin:8px 0 0">逻辑层按格点推进，画面做插值，和报告里“逻辑-表现分离”一致。数据是演示用的模拟订单，不接企业现网。</p>
+      </div>
+
+      <div class="card">
+        <h2>KPI 监控</h2>
+        <div class="kpis">
+          <div class="kpi"><span>完成率</span><b id="kDone">0%</b></div>
+          <div class="kpi"><span>已完成 / 全部</span><b id="kCnt">0 / 0</b></div>
+          <div class="kpi"><span>平均等待</span><b id="kWait">0 s</b></div>
+          <div class="kpi"><span>冲突次数</span><b id="kConf">0</b></div>
+        </div>
+        <div class="bars">
+          <div><span class="hint">库存占用</span><div class="bar"><i id="barOcc"></i></div></div>
+          <div><span class="hint">设备利用率</span><div class="bar"><i id="barUtil"></i></div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>任务队列（模拟业务表）</h2>
+        <div style="max-height:170px;overflow:auto">
+          <table>
+            <thead><tr><th>单号</th><th>类型</th><th>目标</th><th>状态</th></tr></thead>
+            <tbody id="taskBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>SQLite 示意 · 货位 / 车辆</h2>
+        <div style="max-height:130px;overflow:auto">
+          <table>
+            <thead><tr><th>车辆</th><th>层</th><th>格点</th><th>状态</th></tr></thead>
+            <tbody id="carBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>事件日志</h2>
+        <div class="log" id="log"></div>
+      </div>
+    </aside>
+  </div>
+
+  <div class="modal" id="modal">
+    <div class="box">
+      <h3>演示说明（答辩可直接讲）</h3>
+      <ol>
+        <li>中间是三层立体库的等距视图：巷道可走，货位只在取放时进入，左下角为换层提升机。</li>
+        <li>两台四向穿梭车按 A* 寻路，换向会加代价，避免原地来回转。</li>
+        <li>右侧可下发入库 / 出库 / 移库，或点“演示 12 单”自动跑一轮。</li>
+        <li>KPI、任务表、车辆表对应报告里的数据驱动与监控仪表板，数据为模拟。</li>
+        <li>未对接企业 WMS/WCS 现网，只保留字段级对应关系，避免影响生产。</li>
+      </ol>
+      <div class="btns"><button class="primary" id="btnClose">开始演示</button></div>
+    </div>
+  </div>
+
+<script>
+(function () {
+  const COLS = 12, ROWS = 8, LAYERS = 3;
+  const TILE_W = 54, TILE_H = 28, LAYER_GAP = 52;
+  const canvas = document.getElementById("cv");
+  const ctx = canvas.getContext("2d");
+
+  const state = {
+    running: true,
+    speed: 1,
+    scale: 1,
+    panX: 0,
+    panY: 0,
+    showPath: true,
+    layersOn: [true, true, true],
+    slots: new Map(),
+    cars: [],
+    tasks: [],
+    seq: 1,
+    conflicts: 0,
+    lastConflictAt: new Set(),
+    waits: [],
+    clock: 0,
+    lastTs: 0,
+    dragging: false,
+    lastMX: 0,
+    lastMY: 0
+  };
+
+  const ioIn = { x: COLS - 1, y: 0, l: 0 };
+  const ioOut = { x: COLS - 1, y: 6, l: 0 };
+  const lift = { x: 0, y: 0 };
+
+  function key(x, y, l) { return x + "," + y + "," + l; }
+  function inBound(x, y) { return x >= 0 && y >= 0 && x < COLS && y < ROWS; }
+  function isAisle(x, y) { return y % 2 === 0 || x === 0 || x === COLS - 1; }
+  function isSlot(x, y) { return y % 2 === 1 && x >= 1 && x <= COLS - 2; }
+  function isLift(x, y) { return x === lift.x && y === lift.y; }
+  function slotId(x, y, l) { return "L" + (l + 1) + "-" + String.fromCharCode(65 + y) + String(x).padStart(2, "0"); }
+
+  function canWalk(x, y, start, goal) {
+    if (!inBound(x, y)) return false;
+    if (isAisle(x, y) || isLift(x, y)) return true;
+    if (isSlot(x, y) && ((x === start.x && y === start.y) || (x === goal.x && y === goal.y))) return true;
+    return false;
+  }
+
+  function neighbors(node, start, goal) {
+    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    const out = [];
+    for (const [dx, dy] of dirs) {
+      const nx = node.x + dx, ny = node.y + dy;
+      if (canWalk(nx, ny, start, goal)) out.push({ x: nx, y: ny, l: node.l });
+    }
+    if (isLift(node.x, node.y)) {
+      if (node.l > 0) out.push({ x: node.x, y: node.y, l: node.l - 1 });
+      if (node.l < LAYERS - 1) out.push({ x: node.x, y: node.y, l: node.l + 1 });
+    }
+    return out;
+  }
+
+  function dirOf(a, b) {
+    if (a.l !== b.l) return "lift";
+    if (b.x > a.x) return "e";
+    if (b.x < a.x) return "w";
+    if (b.y > a.y) return "s";
+    if (b.y < a.y) return "n";
+    return "stay";
+  }
+
+  function astar(start, goal) {
+    const sk = key(start.x, start.y, start.l);
+    const gk = key(goal.x, goal.y, goal.l);
+    const open = [{ n: start, g: 0, f: 0, prev: null, dir: "stay" }];
+    const best = new Map([[sk, 0]]);
+    let guard = 0;
+    while (open.length && guard++ < 8000) {
+      open.sort((a, b) => a.f - b.f);
+      const cur = open.shift();
+      const ck = key(cur.n.x, cur.n.y, cur.n.l);
+      if (ck === gk) {
+        const path = [];
+        let p = cur;
+        while (p) { path.push(p.n); p = p.prev; }
+        return path.reverse();
+      }
+      for (const nb of neighbors(cur.n, start, goal)) {
+        const ndir = dirOf(cur.n, nb);
+        const turn = (cur.dir !== "stay" && ndir !== cur.dir) ? 1.6 : 0;
+        const step = (ndir === "lift") ? 3.2 : 1;
+        const g = cur.g + step + turn;
+        const nk = key(nb.x, nb.y, nb.l);
+        if (best.has(nk) && g >= best.get(nk)) continue;
+        best.set(nk, g);
+        const h = Math.abs(nb.x - goal.x) + Math.abs(nb.y - goal.y) + Math.abs(nb.l - goal.l) * 4;
+        open.push({ n: nb, g, f: g + h, prev: cur, dir: ndir });
+      }
+    }
+    return [start];
+  }
+
+  function allSlots() {
+    const list = [];
+    for (let l = 0; l < LAYERS; l++)
+      for (let y = 0; y < ROWS; y++)
+        for (let x = 0; x < COLS; x++)
+          if (isSlot(x, y)) list.push({ x, y, l });
+    return list;
+  }
+
+  function emptySlots() { return allSlots().filter((s) => !state.slots.has(key(s.x, s.y, s.l))); }
+  function filledSlots() { return allSlots().filter((s) => state.slots.has(key(s.x, s.y, s.l))); }
+  function rand(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+  function log(msg) {
+    const el = document.getElementById("log");
+    const t = state.clock.toFixed(1);
+    el.insertAdjacentHTML("afterbegin", "<div>[" + t + "s] " + msg + "</div>");
+  }
+
+  function addTask(type, from, to) {
+    const task = {
+      id: "T" + String(state.seq++).padStart(3, "0"),
+      type, from, to,
+      status: "等待",
+      created: state.clock,
+      started: null,
+      car: null
+    };
+    state.tasks.push(task);
+    const label = type === "入库" ? "入库到 " + slotId(to.x, to.y, to.l)
+      : type === "出库" ? "出库 " + slotId(from.x, from.y, from.l)
+      : slotId(from.x, from.y, from.l) + " → " + slotId(to.x, to.y, to.l);
+    log("下发 " + task.id + " · " + type + " · " + label);
+    return task;
+  }
+
+  function issueInbound() {
+    const empties = emptySlots();
+    if (!empties.length) { log("无空货位，入库取消"); return; }
+    addTask("入库", { ...ioIn }, { ...rand(empties) });
+  }
+  function issueOutbound() {
+    const filled = filledSlots().filter((s) => !reserved(s, "from"));
+    if (!filled.length) { log("无可出库货物"); return; }
+    addTask("出库", { ...rand(filled) }, { ...ioOut });
+  }
+  function issueMove() {
+    const filled = filledSlots().filter((s) => !reserved(s, "from"));
+    const empties = emptySlots().filter((s) => !reserved(s, "to"));
+    if (!filled.length || !empties.length) { log("移库条件不足"); return; }
+    addTask("移库", { ...rand(filled) }, { ...rand(empties) });
+  }
+  function reserved(slot, which) {
+    return state.tasks.some((t) => t.status !== "完成" && t.status !== "失败" &&
+      t[which].x === slot.x && t[which].y === slot.y && t[which].l === slot.l);
+  }
+
+  function resetWorld() {
+    state.slots.clear();
+    state.tasks = [];
+    state.seq = 1;
+    state.conflicts = 0;
+    state.lastConflictAt.clear();
+    state.waits = [];
+    state.clock = 0;
+    const goods = ["辊筒组件", "提升机链", "穿梭车轮组", "电控箱", "光电开关", "托盘底板"];
+    allSlots().forEach((s, i) => {
+      if (Math.random() < 0.38) {
+        state.slots.set(key(s.x, s.y, s.l), { sku: "SKU-" + (1001 + i), name: goods[i % goods.length] });
+      }
+    });
+    state.cars = [
+      { id: "SRM-01", x: 2, y: 2, l: 0, fx: 2, fy: 2, fl: 0, t: 0, path: [], dir: "e", status: "空闲", task: null, busyTime: 0 },
+      { id: "SRM-02", x: 4, y: 4, l: 1, fx: 4, fy: 4, fl: 1, t: 0, path: [], dir: "w", status: "空闲", task: null, busyTime: 0 }
+    ];
+    document.getElementById("log").innerHTML = "";
+    log("场景已重置，库存与车辆写入模拟数据表");
+    for (let i = 0; i < 4; i++) issueInbound();
+    for (let i = 0; i < 3; i++) issueOutbound();
+  }
+
+  function assignTasks() {
+    const waiting = state.tasks.filter((t) => t.status === "等待");
+    const idle = state.cars.filter((c) => c.status === "空闲");
+    for (const car of idle) {
+      if (!waiting.length) break;
+      const task = waiting.shift();
+      const start = { x: Math.round(car.x), y: Math.round(car.y), l: car.l };
+      const firstGoal = task.type === "入库" ? task.to : task.from;
+      const path = astar(start, firstGoal);
+      if (path.length < 2 && (start.x !== firstGoal.x || start.y !== firstGoal.y || start.l !== firstGoal.l)) {
+        log(task.id + " 暂无路径，稍后重试");
+        continue;
+      }
+      car.task = task;
+      car.phase = "goPick";
+      car.path = path;
+      car.t = 0;
+      car.status = task.type === "入库" ? "送货" : "取货";
+      task.status = "执行中";
+      task.started = state.clock;
+      task.car = car.id;
+      state.waits.push(task.started - task.created);
+    }
+  }
+
+  function advanceCar(car, dt) {
+    if (!car.path.length) return;
+    const stepTime = 0.28;
+    car.t += dt / stepTime;
+    while (car.t >= 1 && car.path.length) {
+      car.t -= 1;
+      const now = car.path.shift();
+      car.x = now.x; car.y = now.y; car.l = now.l;
+      if (car.path[0]) car.dir = dirOf(now, car.path[0]);
+      if (!car.path.length) onArrive(car);
+    }
+    if (car.path.length) {
+      const cur = { x: car.x, y: car.y, l: car.l };
+      const nxt = car.path[0];
+      car.fx = cur.x + (nxt.x - cur.x) * Math.min(car.t, 1);
+      car.fy = cur.y + (nxt.y - cur.y) * Math.min(car.t, 1);
+      car.fl = cur.l + (nxt.l - cur.l) * Math.min(car.t, 1);
+    } else {
+      car.fx = car.x; car.fy = car.y; car.fl = car.l;
+    }
+    if (car.status !== "空闲") car.busyTime += dt;
+  }
+
+  function onArrive(car) {
+    const task = car.task;
+    if (!task) { car.status = "空闲"; return; }
+    if (car.phase === "goPick") {
+      if (task.type === "入库") {
+        finishPut(task);
+        idle(car);
+      } else {
+        const path = astar({ x: car.x, y: car.y, l: car.l }, task.to);
+        car.phase = "goDrop";
+        car.path = path;
+        car.t = 0;
+        car.status = task.type === "出库" ? "送出" : "移库";
+        if (task.type !== "入库") {
+          const k = key(task.from.x, task.from.y, task.from.l);
+          car.carry = state.slots.get(k);
+          state.slots.delete(k);
+        }
+      }
+    } else {
+      if (task.type === "出库") {
+        log(task.id + " 已送达出库口 " + (car.carry ? car.carry.sku : ""));
+      } else if (task.type === "移库") {
+        state.slots.set(key(task.to.x, task.to.y, task.to.l), car.carry);
+      }
+      finishPut(task, true);
+      idle(car);
+    }
+  }
+
+  function finishPut(task, already) {
+    if (!already && task.type === "入库") {
+      state.slots.set(key(task.to.x, task.to.y, task.to.l), {
+        sku: "SKU-" + (2000 + state.seq), name: "入库件"
+      });
+    }
+    task.status = "完成";
+    log(task.id + " 完成");
+  }
+  function idle(car) {
+    car.task = null;
+    car.phase = "";
+    car.path = [];
+    car.carry = null;
+    car.status = "空闲";
+  }
+
+  function detectConflict() {
+    const seen = new Map();
+    state.cars.forEach((c) => { if (c.conflictHold > 0) c.conflictHold -= 1; else c.conflict = false; });
+    for (const car of state.cars) {
+      const k = key(Math.round(car.fx), Math.round(car.fy), Math.round(car.fl));
+      if (seen.has(k)) {
+        const pair = [seen.get(k), car.id].sort().join("-") + "-" + k;
+        if (!state.lastConflictAt.has(pair)) {
+          state.conflicts += 1;
+          state.lastConflictAt.add(pair);
+          car.conflict = true;
+          car.conflictHold = 24;
+          const other = state.cars.find((c) => c.id === seen.get(k));
+          if (other) { other.conflict = true; other.conflictHold = 24; }
+          log("冲突： " + pair);
+        }
+      } else seen.set(k, car.id);
+    }
+  }
+
+  function resize() {
+    const r = canvas.parentElement.getBoundingClientRect();
+    canvas.width = r.width * devicePixelRatio;
+    canvas.height = r.height * devicePixelRatio;
+    ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+    fitView();
+  }
+
+  function layerShift(l) {
+    return l * (COLS * TILE_W * 0.42 + 70);
+  }
+
+  function toIso(x, y, l) {
+    const w = canvas.width / devicePixelRatio, h = canvas.height / devicePixelRatio;
+    const ox = w * 0.18 + state.panX + layerShift(l) * state.scale;
+    const oy = h * 0.30 + state.panY;
+    return {
+      x: ox + (x - y) * TILE_W * 0.5 * state.scale,
+      y: oy + (x + y) * TILE_H * 0.5 * state.scale
+    };
+  }
+
+  function fitView() {
+    const w = canvas.width / devicePixelRatio, h = canvas.height / devicePixelRatio;
+    if (!w || !h) return;
+    const pts = [];
+    for (let l = 0; l < LAYERS; l++)
+      for (let y = 0; y < ROWS; y++)
+        for (let x of [0, COLS - 1]) pts.push(toIso(x, y, l));
+    state.scale = 1;
+    state.panX = 0;
+    state.panY = 0;
+    const raw = [];
+    for (let l = 0; l < LAYERS; l++) {
+      raw.push({ x: layerShift(l) + (0 - 0) * TILE_W * 0.5, y: (0 + 0) * TILE_H * 0.5 });
+      raw.push({ x: layerShift(l) + (COLS - 1 - (ROWS - 1)) * TILE_W * 0.5, y: (COLS - 1 + ROWS - 1) * TILE_H * 0.5 });
+      raw.push({ x: layerShift(l) + (0 - (ROWS - 1)) * TILE_W * 0.5, y: (0 + ROWS - 1) * TILE_H * 0.5 });
+      raw.push({ x: layerShift(l) + (COLS - 1 - 0) * TILE_W * 0.5, y: (COLS - 1 + 0) * TILE_H * 0.5 });
+    }
+    const minX = Math.min.apply(null, raw.map((p) => p.x));
+    const maxX = Math.max.apply(null, raw.map((p) => p.x));
+    const minY = Math.min.apply(null, raw.map((p) => p.y));
+    const maxY = Math.max.apply(null, raw.map((p) => p.y));
+    const sx = (w - 80) / Math.max(80, maxX - minX);
+    const sy = (h - 80) / Math.max(80, maxY - minY);
+    state.scale = Math.max(0.55, Math.min(1.35, Math.min(sx, sy)));
+    const cx = (minX + maxX) / 2 * state.scale;
+    const cy = (minY + maxY) / 2 * state.scale;
+    state.panX = w * 0.18 - (w * 0.18 + cx) + w * 0.5 - w * 0.18;
+    state.panY = h * 0.30 - (h * 0.30 + cy) + h * 0.48;
+  }
+
+  function drawTile(p, fill, stroke) {
+    const hw = TILE_W * 0.5 * state.scale, hh = TILE_H * 0.5 * state.scale;
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y - hh);
+    ctx.lineTo(p.x + hw, p.y);
+    ctx.lineTo(p.x, p.y + hh);
+    ctx.lineTo(p.x - hw, p.y);
+    ctx.closePath();
+    ctx.fillStyle = fill;
+    ctx.fill();
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  function drawBox(p, color, h) {
+    const hw = TILE_W * 0.34 * state.scale, hh = TILE_H * 0.34 * state.scale;
+    const zh = h * state.scale;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(p.x - hw, p.y);
+    ctx.lineTo(p.x, p.y + hh);
+    ctx.lineTo(p.x, p.y + hh - zh);
+    ctx.lineTo(p.x - hw, p.y - zh);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = shade(color, 1.15);
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y + hh);
+    ctx.lineTo(p.x + hw, p.y);
+    ctx.lineTo(p.x + hw, p.y - zh);
+    ctx.lineTo(p.x, p.y + hh - zh);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = shade(color, 1.35);
+    ctx.beginPath();
+    ctx.moveTo(p.x - hw, p.y - zh);
+    ctx.lineTo(p.x, p.y - hh - zh + hh * 0.15);
+    ctx.lineTo(p.x + hw, p.y - zh);
+    ctx.lineTo(p.x, p.y + hh - zh);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function shade(hex, k) {
+    const n = parseInt(hex.slice(1), 16);
+    let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    r = Math.min(255, Math.round(r * k));
+    g = Math.min(255, Math.round(g * k));
+    b = Math.min(255, Math.round(b * k));
+    return "rgb(" + r + "," + g + "," + b + ")";
+  }
+
+  function draw() {
+    const w = canvas.width / devicePixelRatio, h = canvas.height / devicePixelRatio;
+    ctx.clearRect(0, 0, w, h);
+    const cells = [];
+    for (let l = 0; l < LAYERS; l++) {
+      if (!state.layersOn[l]) continue;
+      for (let y = 0; y < ROWS; y++)
+        for (let x = 0; x < COLS; x++)
+          cells.push({ x, y, l, d: x + y + l * 20 });
+    }
+    cells.sort((a, b) => a.d - b.d);
+    for (let l = 0; l < LAYERS; l++) {
+      if (!state.layersOn[l]) continue;
+      const a = toIso(-0.6, -0.6, l), b = toIso(COLS - 0.4, -0.6, l);
+      const c2 = toIso(COLS - 0.4, ROWS - 0.4, l), d = toIso(-0.6, ROWS - 0.4, l);
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.lineTo(c2.x, c2.y); ctx.lineTo(d.x, d.y);
+      ctx.closePath();
+      ctx.fillStyle = l === 0 ? "rgba(56,104,140,.42)" : l === 1 ? "rgba(45,116,130,.42)" : "rgba(36,120,118,.42)";
+      ctx.fill();
+      ctx.strokeStyle = "rgba(125, 211, 252, .45)";
+      ctx.stroke();
+    }
+    for (const c of cells) {
+      const p = toIso(c.x, c.y, c.l);
+      if (isLift(c.x, c.y)) drawTile(p, "#22d3ee", "#ecfeff");
+      else if (c.x === ioIn.x && c.y === ioIn.y && c.l === 0) drawTile(p, "#22c55e", "#bbf7d0");
+      else if (c.x === ioOut.x && c.y === ioOut.y && c.l === 0) drawTile(p, "#f59e0b", "#fde68a");
+      else if (isAisle(c.x, c.y)) drawTile(p, "#5b8fb0", "#9ec5de");
+      else drawTile(p, "#2c4458", "#6b8aa3");
+      const goods = state.slots.get(key(c.x, c.y, c.l));
+      if (goods) drawBox(p, "#f59e0b", 18);
+      else if (isSlot(c.x, c.y)) drawBox(p, "#475569", 7);
+    }
+
+    if (state.showPath) {
+      for (const car of state.cars) {
+        if (!car.path.length) continue;
+        ctx.beginPath();
+        const pts = [{ x: car.fx, y: car.fy, l: car.fl }].concat(car.path);
+        pts.forEach((n, i) => {
+          const p = toIso(n.x, n.y, n.l);
+          if (i === 0) ctx.moveTo(p.x, p.y);
+          else ctx.lineTo(p.x, p.y);
+        });
+        ctx.strokeStyle = car.id === "SRM-01" ? "#38bdf8" : "#a78bfa";
+        ctx.lineWidth = 2.2;
+        ctx.stroke();
+      }
+    }
+
+    for (const car of state.cars) {
+      if (!state.layersOn[Math.round(car.fl)]) continue;
+      const p = toIso(car.fx, car.fy, car.fl);
+      drawBox(p, car.conflict ? "#ef4444" : "#16a34a", 20);
+      ctx.fillStyle = "#e2e8f0";
+      ctx.font = 11 * state.scale + "px Microsoft YaHei";
+      ctx.fillText(car.id, p.x - 18, p.y - 28 * state.scale);
+    }
+
+    ctx.fillStyle = "#cbd5e1";
+    ctx.font = "13px Microsoft YaHei, Segoe UI, sans-serif";
+    ctx.fillText("1F / 2F / 3F 分层平铺  ·  绿格入库口  ·  橙格出库口  ·  青格提升机", 16, h - 16);
+    for (let l = 0; l < LAYERS; l++) {
+      if (!state.layersOn[l]) continue;
+      const p = toIso(0, 0, l);
+      ctx.fillStyle = "#67e8f9";
+      ctx.font = "bold 16px Microsoft YaHei, Segoe UI, sans-serif";
+      ctx.fillText((l + 1) + "F", p.x - 48 * state.scale, p.y - 18 * state.scale);
+    }
+  }
+
+  function renderUI() {
+    const done = state.tasks.filter((t) => t.status === "完成").length;
+    const all = state.tasks.length;
+    const occ = state.slots.size;
+    const cap = allSlots().length;
+    const avgWait = state.waits.length ? (state.waits.reduce((a, b) => a + b, 0) / state.waits.length) : 0;
+    const util = state.cars.reduce((a, c) => a + Math.min(1, c.busyTime / Math.max(state.clock, 0.01)), 0) / state.cars.length;
+    document.getElementById("kDone").textContent = (all ? Math.round(done / all * 100) : 0) + "%";
+    document.getElementById("kCnt").textContent = done + " / " + all;
+    document.getElementById("kWait").textContent = avgWait.toFixed(1) + " s";
+    document.getElementById("kConf").textContent = String(state.conflicts);
+    document.getElementById("barOcc").style.width = Math.round(occ / cap * 100) + "%";
+    document.getElementById("barUtil").style.width = Math.round(util * 100) + "%";
+
+    document.getElementById("taskBody").innerHTML = state.tasks.slice().reverse().slice(0, 14).map((t) => {
+      const cls = t.status === "完成" ? "ok" : t.status === "执行中" ? "run" : t.status === "失败" ? "bad" : "wait";
+      const dest = t.type === "出库" ? slotId(t.from.x, t.from.y, t.from.l) : slotId(t.to.x, t.to.y, t.to.l);
+      return "<tr><td>" + t.id + "</td><td>" + t.type + "</td><td>" + dest + "</td><td class='" + cls + "'>" + t.status + "</td></tr>";
+    }).join("");
+
+    document.getElementById("carBody").innerHTML = state.cars.map((c) =>
+      "<tr><td>" + c.id + "</td><td>" + (Math.round(c.fl) + 1) + "F</td><td>" +
+      Math.round(c.fx) + "," + Math.round(c.fy) + "</td><td>" + c.status + "</td></tr>"
+    ).join("");
+  }
+
+  function tick(ts) {
+    if (!state.lastTs) state.lastTs = ts;
+    const dt = Math.min(0.05, (ts - state.lastTs) / 1000) * state.speed;
+    state.lastTs = ts;
+    if (state.running) {
+      state.clock += dt;
+      assignTasks();
+      state.cars.forEach((c) => advanceCar(c, dt));
+      detectConflict();
+    }
+    draw();
+    renderUI();
+    requestAnimationFrame(tick);
+  }
+
+  canvas.addEventListener("mousedown", (e) => { state.dragging = true; state.lastMX = e.clientX; state.lastMY = e.clientY; });
+  window.addEventListener("mouseup", () => state.dragging = false);
+  window.addEventListener("mousemove", (e) => {
+    if (!state.dragging) return;
+    state.panX += e.clientX - state.lastMX;
+    state.panY += e.clientY - state.lastMY;
+    state.lastMX = e.clientX; state.lastMY = e.clientY;
+  });
+  canvas.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    state.scale = Math.min(2.2, Math.max(0.55, state.scale + (e.deltaY > 0 ? -0.08 : 0.08)));
+  }, { passive: false });
+
+  document.getElementById("btnPlay").onclick = function () {
+    state.running = !state.running;
+    this.textContent = state.running ? "暂停" : "继续";
+  };
+  document.getElementById("btnReset").onclick = resetWorld;
+  document.getElementById("btnIn").onclick = issueInbound;
+  document.getElementById("btnOut").onclick = issueOutbound;
+  document.getElementById("btnMv").onclick = issueMove;
+  document.getElementById("btnDemo").onclick = function () {
+    for (let i = 0; i < 5; i++) issueInbound();
+    for (let i = 0; i < 4; i++) issueOutbound();
+    for (let i = 0; i < 3; i++) issueMove();
+    state.running = true;
+    document.getElementById("btnPlay").textContent = "暂停";
+  };
+  document.getElementById("speed").onchange = function () { state.speed = parseFloat(this.value); };
+  document.getElementById("showPath").onchange = function () { state.showPath = this.checked; };
+  ["ly0", "ly1", "ly2"].forEach((id, i) => {
+    document.getElementById(id).onchange = function () { state.layersOn[i] = this.checked; };
+  });
+  document.getElementById("btnClose").onclick = function () {
+    document.getElementById("modal").style.display = "none";
+  };
+  document.getElementById("btnHelp").onclick = function () {
+    document.getElementById("modal").style.display = "flex";
+  };
+
+  window.addEventListener("resize", resize);
+  resize();
+  resetWorld();
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
