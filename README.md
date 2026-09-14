@@ -7,11 +7,8 @@
 
 ## 在线演示
 
-仓库开启 GitHub Pages 后，打开：
-
-https://&lt;你的用户名&gt;.github.io/visual-logistics-sim-mvp/
-
-（推送完成后会把真实地址写在仓库 About 里。）
+- 仓库：https://github.com/zhanghui949493354/visual-logistics-sim-mvp
+- 网页：https://zhanghui949493354.github.io/visual-logistics-sim-mvp/
 
 ## 本地打开
 
